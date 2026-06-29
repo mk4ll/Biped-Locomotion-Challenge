@@ -83,108 +83,107 @@ def settle(env, ctrl, seconds=0.8):
         env.step(res["tau"])
 
 
-def dance_step(env, ctrl, t, com_ref, q_nom_base, joint_idx, knee_idx):
-    """Apply one control step with choreography for time t."""
+def dance_step(env, ctrl, t, com_ref, q_nom_base, joint_idx, knee_idx, foot_nom_L, foot_nom_R):
     m = env.model
     base = ctrl.base_id
 
     # ── choreography ──────────────────────────────────────────────────────────
-    sho_L_pitch = joint_idx["left_shoulder_pitch"]
-    sho_R_pitch = joint_idx["right_shoulder_pitch"]
-    sho_L_roll  = joint_idx["left_shoulder_roll"]
-    sho_R_roll  = joint_idx["right_shoulder_roll"]
-    knee_L      = knee_idx["left_knee"]
-    knee_R      = knee_idx["right_knee"]
+    sho_L_pitch = joint_idx.get("left_shoulder_pitch")
+    sho_R_pitch = joint_idx.get("right_shoulder_pitch")
+    sho_L_roll  = joint_idx.get("left_shoulder_roll")
+    sho_R_roll  = joint_idx.get("right_shoulder_roll")
+    elb_L       = joint_idx.get("left_elbow")
+    elb_R       = joint_idx.get("right_elbow")
+    sho_L_yaw   = joint_idx.get("left_shoulder_yaw")
+    sho_R_yaw   = joint_idx.get("right_shoulder_yaw")
+    wri_L_roll  = joint_idx.get("left_wrist_roll")
+    wri_R_roll  = joint_idx.get("right_wrist_roll")
+    knee_L      = knee_idx.get("left_knee")
+    knee_R      = knee_idx.get("right_knee")
 
     q = ctrl.pos_task.q_nom
 
+    # Absolute targets for base posture (elbows bent 90deg forward, palms up)
+    BP_PITCH = -0.2
+    BP_ROLL = 0.2
+    BP_ELBOW = 0.0
+    BP_YAW_L = 0.0     
+    BP_YAW_R = 0.0     
+    BP_WRIST_L = -1.57  
+    BP_WRIST_R = 1.57   
+
+    def set_joints(alpha, el_L_offset=0.0, el_R_offset=0.0):
+        if sho_L_pitch is not None: q[sho_L_pitch] = (1 - alpha) * q_nom_base[sho_L_pitch] + alpha * BP_PITCH
+        if sho_R_pitch is not None: q[sho_R_pitch] = (1 - alpha) * q_nom_base[sho_R_pitch] + alpha * BP_PITCH
+        if sho_L_roll is not None:  q[sho_L_roll]  = (1 - alpha) * q_nom_base[sho_L_roll]  + alpha * BP_ROLL
+        if sho_R_roll is not None:  q[sho_R_roll]  = (1 - alpha) * q_nom_base[sho_R_roll]  + alpha * (-BP_ROLL)
+        if elb_L is not None:       q[elb_L]       = (1 - alpha) * q_nom_base[elb_L]       + alpha * BP_ELBOW + el_L_offset
+        if elb_R is not None:       q[elb_R]       = (1 - alpha) * q_nom_base[elb_R]       + alpha * BP_ELBOW + el_R_offset
+        if sho_L_yaw is not None:   q[sho_L_yaw]   = (1 - alpha) * q_nom_base[sho_L_yaw]   + alpha * BP_YAW_L
+        if sho_R_yaw is not None:   q[sho_R_yaw]   = (1 - alpha) * q_nom_base[sho_R_yaw]   + alpha * BP_YAW_R
+        if wri_L_roll is not None:  q[wri_L_roll]  = (1 - alpha) * q_nom_base[wri_L_roll]  + alpha * BP_WRIST_L
+        if wri_R_roll is not None:  q[wri_R_roll]  = (1 - alpha) * q_nom_base[wri_R_roll]  + alpha * BP_WRIST_R
+
     if t < PHASE1_DUR:
-        # Phase 1: both arms slowly rise to +30 deg pitch
         alpha = t / PHASE1_DUR
-        pitch = alpha * ARM_RAISE1_PITCH
-        if sho_L_pitch is not None:
-            q[sho_L_pitch] = q_nom_base[sho_L_pitch] + pitch
-        if sho_R_pitch is not None:
-            q[sho_R_pitch] = q_nom_base[sho_R_pitch] + pitch
+        set_joints(alpha)
         com_sway = 0.0
         knee_delta_L = 0.0
         knee_delta_R = 0.0
+        support = "double"
+        swing_foot = None
 
     elif t < PHASE1_DUR + PHASE2_DUR:
-        # Phase 2: the 67 shuffle
         phase_t = t - PHASE1_DUR
-        # Fraction through current cycle [0, 1)
         cycle_frac = (phase_t % CYCLE_DUR) / CYCLE_DUR
-        # Left arm up = first half of cycle; right arm up = second half
-        if cycle_frac < 0.5:
-            # Left arm HIGH, right arm low — sway left
-            blend = np.sin(np.pi * cycle_frac / 0.5)   # 0→1→0 smooth peak
-            lp = ARM_HIGH_PITCH                         # left: full raise
-            rp = ARM_RAISE1_PITCH * (1.0 - blend * 0.6)  # right: drops down
-            lr = ARM_HIGH_ROLL                          # left: wide spread out
-            rr = -ARM_MID_ROLL * blend                  # right: slight inward
-            com_sway = -COM_SWAY_AMP * blend            # hips sway left (−y)
-            knee_delta_L = 0.0
-            knee_delta_R = KNEE_FLEX_BOOST * blend      # right knee dips (support)
-        else:
-            # Right arm HIGH, left arm low — sway right
-            blend = np.sin(np.pi * (cycle_frac - 0.5) / 0.5)
-            rp = ARM_HIGH_PITCH                         # right: full raise
-            lp = ARM_RAISE1_PITCH * (1.0 - blend * 0.6)  # left: drops down
-            rr = -ARM_HIGH_ROLL                         # right: wide spread out
-            lr = ARM_MID_ROLL * blend                   # left: slight inward
-            com_sway = COM_SWAY_AMP * blend             # hips sway right (+y)
-            knee_delta_R = 0.0
-            knee_delta_L = KNEE_FLEX_BOOST * blend      # left knee dips (support)
 
-        if sho_L_pitch is not None:
-            q[sho_L_pitch] = q_nom_base[sho_L_pitch] + lp
-        if sho_R_pitch is not None:
-            q[sho_R_pitch] = q_nom_base[sho_R_pitch] + rp
-        if sho_L_roll is not None:
-            q[sho_L_roll] = q_nom_base[sho_L_roll] + lr
-        if sho_R_roll is not None:
-            q[sho_R_roll] = q_nom_base[sho_R_roll] + rr
-        if knee_L is not None:
-            q[knee_L] = q_nom_base[knee_L] + knee_delta_L
-        if knee_R is not None:
-            q[knee_R] = q_nom_base[knee_R] + knee_delta_R
+        sine_val = np.sin(2 * np.pi * cycle_frac)
+        
+        pump_amp = 0.3
+        set_joints(1.0, el_L_offset=pump_amp * sine_val, el_R_offset=-pump_amp * sine_val)
+
+        com_sway = -COM_SWAY_AMP * sine_val
+        knee_bounce = KNEE_FLEX_BOOST * np.abs(sine_val)
+
+        support = "double"
+        swing_foot = None
+
+        if knee_L is not None: q[knee_L] = q_nom_base[knee_L] + knee_bounce
+        if knee_R is not None: q[knee_R] = q_nom_base[knee_R] + knee_bounce
 
     else:
-        # Phase 3: both arms lower back to rest
-        alpha = (t - PHASE1_DUR - PHASE2_DUR) / PHASE3_DUR
-        pitch = (1.0 - alpha) * ARM_RAISE1_PITCH
-        if sho_L_pitch is not None:
-            q[sho_L_pitch] = q_nom_base[sho_L_pitch] + pitch
-        if sho_R_pitch is not None:
-            q[sho_R_pitch] = q_nom_base[sho_R_pitch] + pitch
-        if sho_L_roll is not None:
-            q[sho_L_roll] = q_nom_base[sho_L_roll]
-        if sho_R_roll is not None:
-            q[sho_R_roll] = q_nom_base[sho_R_roll]
+        alpha = max(0.0, 1.0 - (t - PHASE1_DUR - PHASE2_DUR) / PHASE3_DUR)
+        set_joints(alpha)
         com_sway = 0.0
         knee_delta_L = 0.0
         knee_delta_R = 0.0
+        support = "double"
+        swing_foot = None
+        if knee_L is not None: q[knee_L] = q_nom_base[knee_L]
+        if knee_R is not None: q[knee_R] = q_nom_base[knee_R]
 
     # ── WBC ───────────────────────────────────────────────────────────────────
     com_now = env.data.subtree_com[base].copy()
     p_ref = com_ref.copy()
-    p_ref[1] += com_sway   # lateral sway
+    p_ref[1] += com_sway
 
     ctrl.com_task.a_ref = np.zeros(3)
     ctrl.com_task.p_ref = p_ref
     ctrl.com_task.v_ref = np.zeros(3)
-    ctrl.contacts.set_support("double")
+    ctrl.contacts.set_support(support)
 
     tau_fb = ctrl.gc.compute(env.data,
                              active_site_ids=ctrl.contacts.active_site_ids)[0]
+    tasks = [ctrl.com_task, ctrl.ori_task, ctrl.pos_task]
+    if support != "double":
+        tasks.append(ctrl.swing_tasks[swing_foot])
+
     res = ctrl.wbc.solve(env.data,
-                         [ctrl.com_task, ctrl.ori_task, ctrl.pos_task],
+                         tasks,
                          ctrl.contacts.stance,
                          R_surface=ctrl.R_surface,
                          fallback_tau=tau_fb)
     env.step(res["tau"])
-
 
 def run(viewer=False, robot="g1"):
     params = load_params()
@@ -201,6 +200,12 @@ def run(viewer=False, robot="g1"):
         "right_shoulder_pitch": "right_shoulder_pitch_joint",
         "left_shoulder_roll":   "left_shoulder_roll_joint",
         "right_shoulder_roll":  "right_shoulder_roll_joint",
+        "left_elbow": "left_elbow_joint",
+        "right_elbow": "right_elbow_joint",
+        "left_shoulder_yaw": "left_shoulder_yaw_joint",
+        "right_shoulder_yaw": "right_shoulder_yaw_joint",
+        "left_wrist_roll": "left_wrist_roll_joint",
+        "right_wrist_roll": "right_wrist_roll_joint",
     }
     knee_names = {
         "left_knee":  "left_knee_joint",
@@ -221,6 +226,8 @@ def run(viewer=False, robot="g1"):
     base = ctrl.base_id
     com_ref = env.data.subtree_com[base].copy()
     q_nom_base = ctrl.pos_task.q_nom.copy()
+    foot_nom_L = env.data.site_xpos[ctrl.left_site].copy()
+    foot_nom_R = env.data.site_xpos[ctrl.right_site].copy()
 
     # Boost posture-task gains so arms actually track targets.
     # Default weight=1 vs com weight=100 means arms are nearly ignored.
@@ -246,7 +253,7 @@ def run(viewer=False, robot="g1"):
                 if not v.is_running():
                     break
                 t = i * env.dt
-                dance_step(env, ctrl, t, com_ref, q_nom_base, joint_idx, knee_idx)
+                dance_step(env, ctrl, t, com_ref, q_nom_base, joint_idx, knee_idx, foot_nom_L, foot_nom_R)
                 v.sync()
         ctrl.pos_task.weight = _saved_w
         ctrl.pos_task.kp     = _saved_kp
@@ -269,7 +276,7 @@ def run(viewer=False, robot="g1"):
     print(f"Rendering {n_steps} steps ({TOTAL_DUR:.1f} s)...")
     for i in range(n_steps):
         t = i * env.dt
-        dance_step(env, ctrl, t, com_ref, q_nom_base, joint_idx, knee_idx)
+        dance_step(env, ctrl, t, com_ref, q_nom_base, joint_idx, knee_idx, foot_nom_L, foot_nom_R)
         if i % FRAME_EVERY == 0:
             renderer.update_scene(env.data, camera=cam)
             frames.append(renderer.render().copy())

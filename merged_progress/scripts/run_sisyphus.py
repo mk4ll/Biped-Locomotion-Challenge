@@ -38,7 +38,7 @@ def boulder_decorator(angle_rad, x0, radius, mass, visual_radius=None):
     sphere is rendered semi-transparent so only the large visual sphere shows.
     """
     def deco(spec, mcfg):
-        z = np.tan(angle_rad) * x0 + radius * np.cos(angle_rad) + 0.003
+        z = np.tan(angle_rad) * x0 + radius / np.cos(angle_rad) + 0.003
         b = spec.worldbody.add_body()
         b.name = "boulder"
         b.pos = [x0, 0.0, z]
@@ -57,16 +57,19 @@ def boulder_decorator(angle_rad, x0, radius, mass, visual_radius=None):
         if visual_radius is not None:
             # Make physics sphere invisible; show only the large visual sphere.
             # Shift the visual sphere's centre forward by (visual_radius - radius)
-            # along the slope so its BACK surface coincides with the physics sphere's
-            # back surface -- i.e. the visual boulder's edge is where the robot
-            # actually touches, not 0.19 m inside the boulder.
+            # along the slope and upward by the same amount so it rests on the ground
+            # and its BACK surface coincides with the physics sphere's back surface.
             g.rgba = [0.40, 0.40, 0.43, 0.0]
             delta = visual_radius - radius
             gv = b.add_geom()
             gv.name = "boulder_visual"
             gv.type = mujoco.mjtGeom.mjGEOM_SPHERE
             gv.size = [visual_radius, 0, 0]
-            gv.pos = [delta * np.cos(angle_rad), 0.0, delta * np.sin(angle_rad)]
+            gv.pos = [
+                delta * (np.cos(angle_rad) - np.sin(angle_rad)),
+                0.0,
+                delta * (np.sin(angle_rad) + np.cos(angle_rad))
+            ]
             gv.rgba = [0.40, 0.40, 0.43, 1.0]
             gv.contype = 0; gv.conaffinity = 0   # visual only
             gv.density = 0.0                      # no mass contribution from visual sphere
