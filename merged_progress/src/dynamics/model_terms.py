@@ -37,7 +37,10 @@ class ModelTerms:
     # -- inertia / bias -------------------------------------------------------
     def mass_matrix(self, data) -> np.ndarray:
         M = np.zeros((self.nv, self.nv))
-        mujoco.mj_fullM(self.model, M, data.qM)
+        try:
+            mujoco.mj_fullM(self.model, M, data.qM)
+        except TypeError:
+            mujoco.mj_fullM(self.model, data, M)
         return M
 
     def bias(self, data) -> np.ndarray:
