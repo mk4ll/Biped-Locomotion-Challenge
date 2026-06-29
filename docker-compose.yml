@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  locomotion:
+    build: .
+    container_name: biped_locomotion
+    # Mount the local directory and X11 socket for Linux/WSL2 GUI support
+    volumes:
+      - .:/app
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    # Ensure standard input is open for the interactive menu
+    stdin_open: true 
+    tty: true
+    # Environment variables for GUI (X11 Forwarding)
+    # - On Linux/WSL2: Inherits $DISPLAY and uses the mounted X11 socket.
+    # - On Windows (cmd/pwsh) / macOS: Falls back to host.docker.internal:0 
+    #   (Requires VcXsrv on Windows, or XQuartz on macOS with `xhost + 127.0.0.1`).
+    environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - MUJOCO_GL=egl # Use EGL for headless rendering capabilities if needed

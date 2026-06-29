@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+logs/*.png
+logs/*.npz
+logs/*.mp4
+mujoco_menagerie/
+.DS_Store

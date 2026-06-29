@@ -1,0 +1,6 @@
+flat_walk.gif
+incline_12deg.gif
+stairs_25mm.gif
+stairs_40mm_hard.gif
+push_recovery_80N.gif
+velocity_change.gif

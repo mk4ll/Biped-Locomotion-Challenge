@@ -1,0 +1,130 @@
+# =====================================================================
+# params.yaml  --  SINGLE source of all parameters (no hardcoded values)
+# G1 dynamic walking, torque-level Whole-Body Control (MuJoCo).
+# Populated/expanded per stage. See README.md Section 7 for rationale.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Model / environment
+# ---------------------------------------------------------------------
+model:
+  scene_flat: "models/unitree_g1/scene_flat.xml"
+  scene_incline: "models/unitree_g1/scene_incline.xml"
+  keyframe: "stand"            # initial qpos/ctrl keyframe in g1.xml
+
+  # Frame / site names  (DISCOVERED from the model in Stage 0, not assumed)
+  base_body: "pelvis"
+  floating_joint: "floating_base_joint"
+  torso_body: "torso_link"
+  imu_site: "imu_in_pelvis"
+
+  feet:
+    left:
+      site: "left_foot"
+      corners: ["left_foot_hl", "left_foot_hr", "left_foot_tl", "left_foot_tr"]
+    right:
+      site: "right_foot"
+      corners: ["right_foot_hl", "right_foot_hr", "right_foot_tl", "right_foot_tr"]
+
+env:
+  gravity: 9.81
+  incline_deg: 3.0            # Stage 6: kept in sync with scene_incline.xml euler
+
+# ---------------------------------------------------------------------
+# Simulation
+# ---------------------------------------------------------------------
+sim:
+  control_rate_hz: 1000        # WBC QP solve rate (~1 kHz)
+  realtime: true
+  viewer: true
+
+# ---------------------------------------------------------------------
+# Stage 1: gravity compensation / dynamics plumbing
+# ---------------------------------------------------------------------
+gravity_comp:
+  duration_s: 5.0
+  hold_posture: true           # add a joint-space PD to keep the (crouch) pose still
+  hold_kp: 60.0
+  hold_kd: 8.0
+
+# ---------------------------------------------------------------------
+# Stage 2: WBC QP  (filled in Stage 2)
+# ---------------------------------------------------------------------
+wbc:
+  friction_mu: 0.5             # conservative vs foot geom friction (0.6) for margin
+  f_min: 1.0                   # min normal force per contact point [N]
+  solver: "quadprog"           # fast dense PD solver; contact eq is full-rank (6D/foot)
+  solver_fallback: "clarabel"  # interior-point fallback on infeasibility
+  reg:
+    qddot: 1.0e-4              # regularization on v̇ (keeps QP strictly PD)
+    torque: 1.0e-4            # regularization on τ
+    force: 1.0e-3             # regularization on contact forces (spreads load)
+  # Task PD gains and weights (acceleration-level: a_des = a_ref + Kp e + Kd ė).
+  tasks:
+    com:
+      weight: 100.0
+      kp: 100.0               # height (z) PD only; xy uses DCM feedback law
+      kd: 20.0
+      k_dcm: 3.0              # DCM feedback gain (xy): xi_dot_cmd = xi_dot_ref + k(xi_ref-xi)
+      height: null            # null => use nominal CoM height from keyframe
+    orientation:              # pelvis/torso upright w.r.t. gravity
+      weight: 20.0
+      kp: 80.0
+      kd: 18.0
+    posture:                  # regularize joints toward nominal keyframe pose
+      weight: 1.0
+      kp: 20.0
+      kd: 8.0
+    swing_foot:               # only active for the airborne foot (single support)
+      weight: 120.0
+      kp: 300.0
+      kd: 34.0
+      kp_ori: 150.0           # keep the swing foot flat (lands flat, clean contact)
+      kd_ori: 24.0
+
+# Capture-point foot placement (DCM-based step adjustment, Stage 4/5)
+capture:
+  enabled: true
+  gain: 1.0                   # foot shift = gain * (xi_measured - xi_ref) at SS start
+  max_shift: 0.12             # clip lateral/sagittal shift [m]
+
+# ---------------------------------------------------------------------
+# Stage 5: push-recovery test
+# ---------------------------------------------------------------------
+push:
+  duration_s: 0.10            # push pulse length
+  # scheduled pushes during the walk: [time_s, fx, fy, fz] (world-frame force, N)
+  schedule:
+    - [1.8, 0.0, 50.0, 0.0]    # lateral (+y)
+    - [3.4, 100.0, 0.0, 0.0]   # forward (+x)
+    - [5.0, 0.0, -50.0, 0.0]   # lateral (-y)
+  sweep_axis: "y"             # axis for the magnitude sweep
+  sweep_forces: [40, 60, 80, 100, 120]   # N (0.1 s pulses)
+
+# ---------------------------------------------------------------------
+# Stage 2: standing-balance demo schedule
+# ---------------------------------------------------------------------
+stand_balance:
+  settle_s: 1.0                # initial settle
+  weight_shift_amp: 0.06       # lateral CoM shift amplitude [m]
+  weight_shift_period_s: 3.0
+  ss_shift_s: 2.0              # time to move CoM over the stance foot (double support)
+  ss_lift_s: 1.0              # time to raise the swing foot
+  single_support_lift: 0.05    # swing foot lift height [m] for SS test
+  hold_s: 3.0                  # hold on one foot after lift
+
+# ---------------------------------------------------------------------
+# Stage 3-4: planner / gait
+# ---------------------------------------------------------------------
+gait:
+  n_steps: 10                 # number of walking steps
+  step_length: 0.10           # forward advance per step [m]
+  step_width: null            # null => use nominal foot separation from the model
+  swing_apex: 0.05            # swing-foot peak height [m]
+  t_ss: 0.5                   # single-support duration [s] (shorter => less DCM divergence)
+  t_ds: 0.15                  # double-support duration [s]
+  t_ds_init: 0.6              # initial settle (double support) [s]
+  t_ds_final: 0.8             # final settle [s]
+  first_swing: "right"        # which foot swings first
+  com_height: null            # null => use nominal CoM height from keyframe
+  dt_plan: 0.002              # planning sample period [s] (matches sim)

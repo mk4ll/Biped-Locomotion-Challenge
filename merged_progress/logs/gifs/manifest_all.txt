@@ -1,0 +1,4 @@
+6	06_incline_16deg.gif	OK
+e	e_mpc_walk.gif	OK
+f	f_arm_swing.gif	OK
+g	g_step_timing.gif	OK

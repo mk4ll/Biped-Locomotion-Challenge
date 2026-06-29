@@ -1,0 +1,11 @@
+# G1 dynamic-walking WBC project dependencies
+mujoco>=3.4.0
+numpy
+scipy
+matplotlib
+pyyaml
+qpsolvers
+# QP backends with prebuilt Windows wheels (proxsuite/proxqp has no Windows wheel):
+quadprog        # default: fast dense PD solver for the WBC QP
+osqp            # fallback (sparse, handles ill-conditioned cases)
+clarabel        # fallback interior-point

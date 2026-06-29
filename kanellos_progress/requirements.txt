@@ -1,0 +1,12 @@
+mujoco>=3.6
+numpy
+scipy
+qpsolvers
+osqp
+matplotlib
+pyyaml
+
+
+#  mjpython scripts/view_walk.py --march                          # step in place
+#  mjpython scripts/view_walk.py --terrain incline --angle 6 --step-len 0.12
+#  mjpython scripts/view_walk.py --realtime 0.5                   # half speed

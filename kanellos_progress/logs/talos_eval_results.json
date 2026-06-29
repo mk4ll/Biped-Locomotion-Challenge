@@ -1,0 +1,84 @@
+{
+  "walking": {
+    "walk_flat": {
+      "fell": false,
+      "duration": 11.6,
+      "distance": 1.435,
+      "max_tilt": 1.6,
+      "dcm_rms": 0.0071,
+      "comz_err_rms": 0.0022,
+      "com_accel_rms": 0.812,
+      "peak_tau": 159.7
+    },
+    "walk_incline_4deg": {
+      "fell": false,
+      "duration": 11.6,
+      "distance": 1.143,
+      "max_tilt": 1.4,
+      "dcm_rms": 0.0064,
+      "comz_err_rms": 0.0027,
+      "com_accel_rms": 0.72,
+      "peak_tau": 151.5
+    },
+    "walk_incline_8deg": {
+      "fell": false,
+      "duration": 11.6,
+      "distance": 1.14,
+      "max_tilt": 1.6,
+      "dcm_rms": 0.0078,
+      "comz_err_rms": 0.0046,
+      "com_accel_rms": 0.757,
+      "peak_tau": 143.2
+    },
+    "ctrl_baseline_flat": {
+      "fell": false,
+      "duration": 11.6,
+      "distance": 1.435,
+      "max_tilt": 1.6,
+      "dcm_rms": 0.0071,
+      "comz_err_rms": 0.0022,
+      "com_accel_rms": 0.812,
+      "peak_tau": 159.7
+    },
+    "ctrl_mpc_flat": {
+      "fell": false,
+      "duration": 11.6,
+      "distance": 1.433,
+      "max_tilt": 1.6,
+      "dcm_rms": 0.0057,
+      "comz_err_rms": 0.0022,
+      "com_accel_rms": 0.795,
+      "peak_tau": 161.5
+    }
+  },
+  "push": {
+    "push_sagittal_baseline": {
+      "by_magnitude": {
+        "60": "1/1",
+        "90": "1/1"
+      },
+      "rate": "2/2"
+    },
+    "push_sagittal_mpc": {
+      "by_magnitude": {
+        "60": "1/1",
+        "90": "1/1"
+      },
+      "rate": "2/2"
+    },
+    "push_lateral_baseline": {
+      "by_magnitude": {
+        "60": "1/1",
+        "90": "1/1"
+      },
+      "rate": "2/2"
+    },
+    "push_lateral_mpc": {
+      "by_magnitude": {
+        "60": "1/1",
+        "90": "1/1"
+      },
+      "rate": "2/2"
+    }
+  }
+}
