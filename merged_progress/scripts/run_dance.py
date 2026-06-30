@@ -106,7 +106,7 @@ def dance_step(env, ctrl, t, com_ref, q_nom_base, joint_idx, knee_idx, foot_nom_
     # Absolute targets for base posture (elbows bent 90deg forward, palms up)
     BP_PITCH = -0.2
     BP_ROLL = 0.2
-    BP_ELBOW = 0.0
+    BP_ELBOW = 1.57
     BP_YAW_L = 0.0     
     BP_YAW_R = 0.0     
     BP_WRIST_L = -1.57  

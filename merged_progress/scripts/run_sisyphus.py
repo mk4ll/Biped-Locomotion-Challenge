@@ -46,7 +46,8 @@ def boulder_decorator(angle_rad, x0, radius, mass, visual_radius=None):
         j.name = "boulder_slide"
         j.type = mujoco.mjtJoint.mjJNT_SLIDE
         j.axis = [np.cos(angle_rad), 0.0, np.sin(angle_rad)]
-        j.damping = 6.0
+        from src.sim.mujoco_compat import spec_set
+        spec_set(j, "damping", 6.0)
         # Physics geom (handles collision + mass)
         g = b.add_geom()
         g.name = "boulder_geom"
