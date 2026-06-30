@@ -112,8 +112,9 @@ class WalkingController:
             if idx is not None:
                 self._sho_idx[side] = idx
 
-        # Override elbow nominal to elbow_angle (default 1.57 rad = 90°) when arm swing is on.
-        # The keyframe default is 1.28 rad (~73°); 1.57 gives a proper right-angle bend.
+        # Override elbow nominal to elbow_angle (1.57 rad = 90° bend) when arm swing is on.
+        # Shoulder stays at the keyframe nominal — in the G1, shoulder_pitch=0 is the
+        # natural arm-at-side position; positive values push the arm forward.
         if as_cfg.get("enabled", False):
             elbow_angle = as_cfg.get("elbow_angle", 1.57)
             for side, jname in [("left",  as_cfg.get("left_elbow",  "left_elbow_joint")),
@@ -242,6 +243,11 @@ class WalkingController:
                 # Capture-point step adjustment: shift landing by gain*(xi_meas-xi_ref).
                 # Ramped by progress so it starts from the current foot pose (no jump).
                 off = self.capture_gain * (xi - ref["dcm"])
+                # Dead-zone on lateral correction: small consistent lateral DCM errors
+                # (≤2 cm) accumulate via replan_touchdown and cause the feet to drift
+                # inward. Suppress them; large lateral errors from pushes still correct.
+                if abs(off[1]) < 0.02:
+                    off[1] = 0.0
                 self._foot_offset = np.clip(off, -self.capture_max, self.capture_max)
                 adj = ref["swing_pos"].copy()
                 adj[:2] = adj[:2] + ref["progress"] * self._foot_offset
@@ -261,19 +267,25 @@ class WalkingController:
             sw = self.swing_tasks[ref["swing"]]
             sw.p_ref = adj
             sw.v_ref = ref["swing_vel"]
-            # land the swing foot aligned to the terrain it is heading onto
-            if self.terrain is not None:
-                sw.R_des = self._surface_R(adj[0])
+            # land the swing foot aligned to terrain + current heading (yaw rotation)
+            surf_R = self._surface_R(adj[0]) if self.terrain is not None else np.eye(3)
+            if abs(th) > 1e-4:
+                c, s = np.cos(th), np.sin(th)
+                R_yaw = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+                sw.R_des = R_yaw @ surf_R
+            elif self.terrain is not None:
+                sw.R_des = surf_R
             tasks.append(sw)
 
-            # Arm swing: contralateral hip-shoulder coupling (sinusoidal, phase-based).
-            # Right leg swings → left arm forward (+), right arm back (-), and vice versa.
+            # Arm swing: contralateral coupling — right leg forward = left arm forward.
+            # sin(π·progress) gives a smooth arc: 0 at takeoff, peak at mid-swing, 0 at landing.
+            # The arm naturally returns to nominal at end of SS so DS needs no active restore.
             if self.k_arm > 0 and len(self._sho_idx) == 2:
                 s = ref["progress"]
                 amp = self.k_arm * np.sin(np.pi * s)
                 swing = ref["swing"]
-                ipsi = swing         # ipsilateral to swing leg → arm goes back
-                contra = "right" if swing == "left" else "left"  # contralateral → arm forward
+                contra = "right" if swing == "left" else "left"
+                ipsi = swing
                 if contra in self._sho_idx:
                     self.pos_task.q_nom[self._sho_idx[contra]] = (
                         self._q_nom_base[self._sho_idx[contra]] + amp)
@@ -281,9 +293,9 @@ class WalkingController:
                     self.pos_task.q_nom[self._sho_idx[ipsi]] = (
                         self._q_nom_base[self._sho_idx[ipsi]] - amp)
         else:
-            # DS: restore nominal shoulder angles
-            for side, idx in self._sho_idx.items():
-                self.pos_task.q_nom[idx] = self._q_nom_base[idx]
+            # DS: posture task holds whatever position the arms reached at end of SS.
+            # No explicit restore needed — sin(π·1)=0 so arms already at nominal at landing.
+            pass
 
         self._prev_support = ref["support"]
         # solve + apply

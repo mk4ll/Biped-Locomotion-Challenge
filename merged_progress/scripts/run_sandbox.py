@@ -108,5 +108,7 @@ if __name__ == "__main__":
                     help="robot model to use")
     ap.add_argument("--speed", default=None, choices=["slow", "normal", "fast"],
                     help="gait speed preset (slow~0.15, normal~0.27, fast~0.47 m/s)")
+    ap.add_argument("--viewer", action="store_true",
+                    help="ignored — sandbox always opens its own viewer")
     args = ap.parse_args()
     sandbox(robot=args.robot, speed=args.speed)

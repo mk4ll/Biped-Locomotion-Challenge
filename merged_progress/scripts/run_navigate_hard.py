@@ -234,14 +234,20 @@ def _make_walkable_hard(variant, seed0):
 # Main run function
 # ---------------------------------------------------------------------------
 
-def run(robot="g1", seed=None, viewer=False):
+_COURSE_MAP = {"chicane": 0, "hairpin": 1, "bypass": 2}
+
+
+def run(robot="g1", seed=None, viewer=False, course=None):
     params = load_params()
     params["gait"]["step_length"] = 0.10    # same gentle pace as standard navigate
 
     if seed is None:
         seed = int(np.random.default_rng().integers(0, 100000))
 
-    variant = int(seed % 3)
+    if course is not None and course in _COURSE_MAP:
+        variant = _COURSE_MAP[course]
+    else:
+        variant = int(seed % 3)
     tables, goal, path, used_seed, used_variant = _make_walkable_hard(variant, seed)
     vname = _VARIANT_NAMES[used_variant]
     print(f"(hard course: variant={used_variant} ({vname}), seed={used_seed}, "
@@ -358,6 +364,8 @@ if __name__ == "__main__":
     ap.add_argument("--robot", default="g1", choices=["g1", "talos"])
     ap.add_argument("--seed", type=int, default=None,
                     help="omit for a new random layout each run")
+    ap.add_argument("--course", default=None, choices=["chicane", "hairpin", "bypass"],
+                    help="force a specific hard course (default: chosen from seed)")
     ap.add_argument("--viewer", action="store_true")
     args = ap.parse_args()
-    run(args.robot, args.seed, args.viewer)
+    run(args.robot, args.seed, args.viewer, course=args.course)

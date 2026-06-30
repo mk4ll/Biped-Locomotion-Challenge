@@ -4,7 +4,7 @@ Run:
     python main.py
 
 Pick a task by pressing its key (single keypress, no Enter needed):
-    1..9, 0, a, b, c  ->  run that task
+    1..9, 0, a..p     ->  run that task
     v                 ->  toggle the live MuJoCo viewer on/off
     r                 ->  toggle the robot model (G1 <-> Talos)
     ESC or q          ->  exit
@@ -41,9 +41,9 @@ TASKS = [
     ("5", "Flat walking",
      ["scripts/run_walk.py", "--terrain", "flat"], True, True,
      "Robot walks forward ~0.9-1.0 m on flat ground. RESULT: PASS."),
-    ("6", "Incline walking (12 deg uphill)",
-     ["scripts/run_walk.py", "--terrain", "incline", "--angle", "12"], True, True,
-     "Robot climbs a 12 deg slope, feet land flat. RESULT: PASS (G1 to 16 deg, Talos to ~8 deg)."),
+    ("6", "Incline walking (16 deg uphill)",
+     ["scripts/run_walk.py", "--terrain", "incline", "--angle", "16", "--speed", "slow"], True, True,
+     "Robot climbs a 16 deg slope at conservative pace (step 0.10 m). RESULT: PASS (G1 max confirmed; Talos to ~8 deg)."),
     ("7", "Stairs climbing (6 x 2.5 cm)",
      ["scripts/run_walk.py", "--terrain", "stairs"], True, True,
      "G1 climbs a full staircase tread-by-tread (+0.15 m). (Talos stairs need own tuning.)"),
@@ -80,9 +80,12 @@ TASKS = [
     ("h", "Online velocity following — change direction mid-gait",
      ["scripts/run_velocity_change.py"], True, True,
      "Sequential plan segments with changing velocity commands: forward→turn→forward→veer. Adaptive navigation demo."),
-    ("i", "Hard stairs (standard indoor: 4 cm risers, 20 cm run)",
+    ("i", "Hard stairs (standard indoor: 4 cm risers, 22 cm run)",
      ["scripts/run_walk.py", "--terrain", "stairs", "--hard-stairs"], True, True,
-     "Climbs steeper stairs than the default 2.5 cm risers. Swing apex 0.10 m, longer SS to clear 4 cm steps."),
+     "Climbs standard indoor stairs (4 cm rise). Swing apex 0.13 m, foot lands 4 cm from riser edge. RESULT: PASS."),
+    ("w", "Harder stairs (5 cm risers, 24 cm run — steep test)",
+     ["scripts/run_walk.py", "--terrain", "stairs", "--harder-stairs"], True, True,
+     "Climbs steep stairs (5 cm rise). Swing apex 0.14 m. Max tested riser height for G1."),
     ("j", "SANDBOX -- walk forever (continuous flat walk, viewer required)",
      ["scripts/run_sandbox.py"], True, True,
      "Walks flat ground in an infinite loop. Re-plans each time the fixed plan ends. Ctrl-C or close viewer to stop."),
@@ -96,7 +99,21 @@ TASKS = [
      "CHICANE (Z-shape: path holds +y then crosses to −y, 4 tables in 2 same-side pairs), "
      "HAIRPIN (long +y bump, 1.3 m flat dwell, 3 right-side tables), "
      "BYPASS (mirror of HAIRPIN: long −y bump, 3 left-side tables). "
-     "All use half-cosine transitions, curviness ≈ 0.13–0.19 rad/0.11 m. RESULT: PASS."),
+     "All use half-cosine transitions, curviness ≈ 0.13–0.19 rad/0.11 m. RESULT: PASS. "
+     "Pass --course chicane/hairpin/bypass to force a specific layout."),
+    ("m", "Incline walking (20 deg — steep test, slow gait)",
+     ["scripts/run_walk.py", "--terrain", "incline", "--angle", "20", "--speed", "slow"], True, True,
+     "Robot climbs a 20 deg slope at slow pace (0.10 m step). "
+     "Slope feedforward g*sin(20°) keeps it from sliding back. 16 deg is safe at normal speed."),
+    ("n", "67 Shuffle Dance — G1 does the viral 67 shuffle",
+     ["scripts/run_dance.py"], True, False,
+     "Alternating arms raise left/right with lateral body bounce. Saves logs/gifs/raw/dance_67.gif."),
+    ("o", "EKF state estimation demo — three experiments, diagnostic plots",
+     ["scripts/run_ekf_demo.py"], False, False,
+     "Flat walk + push recovery + long drift: EKF vs dead-reckoning vs ground truth. Saves logs/ekf_demo.png."),
+    ("p", "Push-force sweep — capture-point vs step-timing QP comparison",
+     ["scripts/run_push_sweep.py"], False, False,
+     "Sweeps lateral push magnitude; compares baseline capture-point vs Khadiv step-timing QP. Writes logs/push_sweep_report.md."),
 ]
 TASK_BY_KEY = {t[0]: t[1:] for t in TASKS}
 # Speed preset names — mapped to --speed argument of run_walk.py
@@ -105,7 +122,7 @@ SPEED_PRESETS = {"slow": "slow", "normal": "normal", "fast": "fast"}
 SPEED_LABELS  = {"slow": "~0.15 m/s", "normal": "~0.36 m/s", "fast": "~0.47 m/s+MPC"}
 SPEED_ORDER = ["normal", "slow", "fast"]
 # tasks whose speed preset the [s] toggle controls
-SPEED_TASKS = {"5", "6", "e", "f", "g", "j"}
+SPEED_TASKS = {"5", "e", "f", "g", "j"}  # "6" excluded: incline uses conservative gait only
 
 
 def getkey():

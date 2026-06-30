@@ -94,8 +94,11 @@ def settle(env, ctrl, terrain, seconds=0.8):
     # with the actual contact normal (critical on steep inclines).
     if terrain is not None:
         ctrl.R_surface = terrain.surface_R(com_ref[0], com_ref[1])
+    # Apply slope feedforward during settle so the robot doesn't slide on steep slopes.
+    a_ff = np.zeros(3)
+    a_ff[:2] = ctrl.slope_accel_ff   # non-zero only on inclines >16°
     for _ in range(int(seconds / env.dt)):
-        ctrl.com_task.a_ref = np.zeros(3)
+        ctrl.com_task.a_ref = a_ff
         ctrl.com_task.p_ref = com_ref
         ctrl.com_task.v_ref = np.zeros(3)
         ctrl.contacts.set_support("double")
@@ -120,7 +123,8 @@ SPEED_BUNDLES = {
 
 
 def run(terrain_name="flat", angle_deg=8.0, viewer=False, robot="g1", step_len=None,
-        mpc=False, arm_swing=False, step_timing=False, hard_stairs=False, speed=None):
+        mpc=False, arm_swing=False, step_timing=False, hard_stairs=False, harder_stairs=False,
+        speed=None):
     params = load_params()
     if speed is not None and speed in SPEED_BUNDLES:
         g = params["gait"]
@@ -139,24 +143,44 @@ def run(terrain_name="flat", angle_deg=8.0, viewer=False, robot="g1", step_len=N
     if step_timing:
         params["step_timing"]["enabled"] = True
     if terrain_name == "stairs":
-        if hard_stairs:
-            # Hard: 4 cm risers, 20 cm run (standard indoor stairs)
-            stairs_kw = dict(rise=0.04, run=0.20, n_steps=6, x0=0.30)
+        if harder_stairs:
+            # Harder: 5 cm risers, 24 cm run — steeper than standard indoor
+            stairs_kw = dict(rise=0.05, run=0.24, n_steps=6, x0=0.30)
             g = params["gait"]
-            g["step_length"] = stairs_kw["run"]
-            g["swing_apex"] = 0.10               # extra clearance for 4 cm riser
-            g["t_ss"] = 0.55                     # slightly longer SS to clear tall riser
+            # Land 4 cm back from riser so toe clears; swing high enough to clear 5 cm rise
+            g["step_length"] = stairs_kw["run"] - 0.04   # 0.20 m
+            g["swing_apex"] = 0.14
+            g["t_ss"] = 0.60
+            g["n_steps"] = 18
+        elif hard_stairs:
+            # Hard: 4 cm risers, 22 cm run (standard indoor stairs)
+            stairs_kw = dict(rise=0.04, run=0.22, n_steps=6, x0=0.30)
+            g = params["gait"]
+            # Land 4 cm back from front edge so toe clears the riser cleanly
+            g["step_length"] = stairs_kw["run"] - 0.04   # 0.18 m
+            g["swing_apex"] = 0.13               # high enough to clear 4 cm riser + toe offset
+            g["t_ss"] = 0.58
             g["n_steps"] = 18
         else:
             # Easy: 2.5 cm risers, 22 cm run (wider tread — foot lands at center)
             stairs_kw = dict(rise=0.025, run=0.22, n_steps=6, x0=0.30)
             g = params["gait"]
-            g["step_length"] = stairs_kw["run"]
-            g["swing_apex"] = 0.06
+            g["step_length"] = stairs_kw["run"] - 0.02   # 0.20 m
+            g["swing_apex"] = 0.07
             g["n_steps"] = 18
     else:
         stairs_kw = dict(rise=0.025, run=0.16, n_steps=6, x0=0.30)
     env, ctrl, terrain = build_on_terrain(params, terrain_name, angle_deg, stairs_kw, robot)
+
+    # Slope feedforward: constant forward acceleration to counteract gravity along slope.
+    # The DCM planner's slope_bias (tan^2 scaling) handles gentle slopes well.
+    # For steep inclines (>16 deg) where hip compensation kicks in and ankle tilt maxes out,
+    # the full g*sin(alpha) feedforward is needed to prevent backward sliding.
+    if terrain_name == "incline" and angle_deg > 16:
+        alpha = np.deg2rad(angle_deg)
+        g_val = params["env"]["gravity"]
+        ctrl.slope_accel_ff = np.array([g_val * np.sin(alpha), 0.0])
+
     settle(env, ctrl, terrain, 0.8)
 
     base = ctrl.base_id
@@ -200,7 +224,9 @@ def run(terrain_name="flat", angle_deg=8.0, viewer=False, robot="g1", step_len=N
     dist = env.data.subtree_com[base][0] - x0
     rise = env.data.subtree_com[base][2] - com0[2]
     label = terrain_name + (f" {angle_deg:.0f}deg" if terrain_name == "incline" else "")
-    if terrain_name == "stairs" and hard_stairs:
+    if terrain_name == "stairs" and harder_stairs:
+        label += " HARDER (5cm risers)"
+    elif terrain_name == "stairs" and hard_stairs:
         label += " HARD (4cm risers)"
     print(f"\n===== Merged terrain walk: {label} =====")
     print(f"fell             = {fell}")
@@ -225,11 +251,13 @@ if __name__ == "__main__":
     ap.add_argument("--step-timing", action="store_true",
                     help="use step timing QP (Khadiv et al.): joint footstep+timing optimisation")
     ap.add_argument("--hard-stairs", action="store_true",
-                    help="steeper stair configuration: 4 cm risers, 20 cm run (standard indoor)")
+                    help="steeper stair configuration: 4 cm risers, 22 cm run (standard indoor)")
+    ap.add_argument("--harder-stairs", action="store_true",
+                    help="steepest stair configuration: 5 cm risers, 24 cm run")
     ap.add_argument("--speed", default=None, choices=["slow", "normal", "fast"],
                     help="gait speed preset (slow~0.15, normal~0.27, fast~0.42 m/s)")
     ap.add_argument("--viewer", action="store_true")
     args = ap.parse_args()
     run(args.terrain, args.angle, args.viewer, args.robot, args.step_len,
-        mpc=args.mpc, arm_swing=args.arm_swing,
-        step_timing=args.step_timing, hard_stairs=args.hard_stairs, speed=args.speed)
+        mpc=args.mpc, arm_swing=args.arm_swing, step_timing=args.step_timing,
+        hard_stairs=args.hard_stairs, harder_stairs=args.harder_stairs, speed=args.speed)

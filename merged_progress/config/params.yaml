@@ -154,7 +154,7 @@ dcm_mpc:
 # ---------------------------------------------------------------------
 arm_swing:
   enabled: false              # true = activate contralateral arm swing
-  gain: 0.08                  # amplitude [rad] at mid-swing (tune to taste)
+  gain: 0.28                  # amplitude [rad] at mid-swing (~16 deg — visible natural swing)
   left_shoulder: "left_shoulder_pitch_joint"
   right_shoulder: "right_shoulder_pitch_joint"
   left_elbow: "left_elbow_joint"
