@@ -75,6 +75,11 @@ class WalkingController:
         self._prev_swing = None    # which foot was swinging in the last SS phase
         # Approximate standing height above terrain surface (used externally)
         self.z_above = terrain.height(0.0, 0.0) if terrain is not None else 0.0
+        # Nominal foot half-width: used as an absolute lateral floor so swing foot
+        # targets never cross or approach the stance foot dangerously close.
+        self._nom_foot_half_y = 0.5 * abs(
+            env.data.site_xpos[self.left_site][1] - env.data.site_xpos[self.right_site][1]
+        )
         # slope feedforward: forward CoM accel to counter gravity-along-slope (Stage 6)
         self.slope_accel_ff = np.zeros(2)
         # low-pass on the CoM-height reference (terrain.height is a step fn on stairs;
@@ -243,9 +248,7 @@ class WalkingController:
                 # Capture-point step adjustment: shift landing by gain*(xi_meas-xi_ref).
                 # Ramped by progress so it starts from the current foot pose (no jump).
                 off = self.capture_gain * (xi - ref["dcm"])
-                # Dead-zone on lateral correction: small consistent lateral DCM errors
-                # (≤2 cm) accumulate via replan_touchdown and cause the feet to drift
-                # inward. Suppress them; large lateral errors from pushes still correct.
+                # Lateral dead-zone: suppress very small lateral errors (≤2 cm).
                 if abs(off[1]) < 0.02:
                     off[1] = 0.0
                 self._foot_offset = np.clip(off, -self.capture_max, self.capture_max)
@@ -254,16 +257,25 @@ class WalkingController:
             else:
                 adj = ref["swing_pos"].copy()
                 adj[:2] = adj[:2] + ref["progress"] * self._foot_offset
-            # Enforce minimum lateral clearance between feet so the
-            # capture-point correction never brings feet dangerously close.
+            # Enforce lateral clearance between feet.
+            # Two constraints applied together every control tick:
+            #   1. Stance-relative: keep at least 7 cm between foot sites
+            #      (prevents step-on-foot and gross crossing).
+            #   2. Nominal-relative: inward correction ≤ 3 cm from the planned
+            #      landing target.  This stops the "leg closing inward" appearance
+            #      while leaving outward push-recovery corrections unrestricted.
             swing = ref["swing"]
             stance_side = "right" if swing == "left" else "left"
             stance_y = env.data.site_xpos[self.foot_sites[stance_side]][1]
-            _MIN_FOOT_SEP = 0.07   # 7 cm minimum lateral gap (G1 foot width ~5 cm)
+            _MIN_FOOT_SEP = 0.07
+            _MAX_INWARD = 0.03   # max inward shift from nominal landing y [m]
+            swing_to_y = ref["swing_to"][1] if ref["swing_to"] is not None else adj[1]
             if swing == "left":
                 adj[1] = max(adj[1], stance_y + _MIN_FOOT_SEP)
+                adj[1] = max(adj[1], swing_to_y - _MAX_INWARD)
             else:
                 adj[1] = min(adj[1], stance_y - _MIN_FOOT_SEP)
+                adj[1] = min(adj[1], swing_to_y + _MAX_INWARD)
             sw = self.swing_tasks[ref["swing"]]
             sw.p_ref = adj
             sw.v_ref = ref["swing_vel"]

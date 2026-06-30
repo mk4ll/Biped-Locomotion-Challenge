@@ -86,9 +86,11 @@ TASKS = [
     ("w", "Harder stairs (5 cm risers, 24 cm run — steep test)",
      ["scripts/run_walk.py", "--terrain", "stairs", "--harder-stairs"], True, True,
      "Climbs steep stairs (5 cm rise). Swing apex 0.14 m. Max tested riser height for G1."),
-    ("j", "SANDBOX -- walk forever (continuous flat walk, viewer required)",
+    ("j", "SANDBOX -- extended flat walk (40 steps, choose control mode with [u])",
      ["scripts/run_sandbox.py"], True, True,
-     "Walks flat ground in an infinite loop. Re-plans each time the fixed plan ends. Ctrl-C or close viewer to stop."),
+     "Single-shot 40-step flat walk. Press [u] before launching to pick: "
+     "Proportional DCM | DCM preview-MPC | Step-timing QP. "
+     "Good for comparing controller stability side-by-side. Ctrl-C or close viewer to stop early."),
     ("k", "Turn in place — ~92° yaw rotation (no forward translation)",
      ["scripts/run_turn.py"], True, True,
      "Pure yaw rotation: vx=vy=0, vyaw=0.2 rad/s, 12 steps → ~92° turn. "
@@ -116,13 +118,25 @@ TASKS = [
      "Sweeps lateral push magnitude; compares baseline capture-point vs Khadiv step-timing QP. Writes logs/push_sweep_report.md."),
 ]
 TASK_BY_KEY = {t[0]: t[1:] for t in TASKS}
+
 # Speed preset names — mapped to --speed argument of run_walk.py
 # slow ~0.15 m/s | normal ~0.27 m/s | fast ~0.42 m/s
 SPEED_PRESETS = {"slow": "slow", "normal": "normal", "fast": "fast"}
 SPEED_LABELS  = {"slow": "~0.15 m/s", "normal": "~0.36 m/s", "fast": "~0.47 m/s+MPC"}
-SPEED_ORDER = ["normal", "slow", "fast"]
+SPEED_ORDER   = ["normal", "slow", "fast"]
 # tasks whose speed preset the [s] toggle controls
 SPEED_TASKS = {"5", "e", "f", "g", "j"}  # "6" excluded: incline uses conservative gait only
+
+# Control-mode toggle for sandbox [j] — [u] key cycles through these
+CTRL_MODES  = ["dcm", "mpc", "step-timing"]
+CTRL_LABELS = {"dcm": "Proportional DCM", "mpc": "DCM preview-MPC",
+               "step-timing": "Step-timing QP"}
+CTRL_TASKS  = {"j", "6", "m"}  # tasks that receive a --mpc / --step-timing flag
+
+# Seed toggle for waiter tasks [c, l] — [x] key cycles through these
+# None means a fresh random seed on every run.
+SEED_LIST  = [None, 1, 2, 3, 4, 5, 42, 99]
+SEED_TASKS = {"c", "l"}   # tasks that receive --seed N when seed is set
 
 
 def getkey():
@@ -143,7 +157,8 @@ def getkey():
         return ch
 
 
-def menu(viewer, robot, speed):
+def menu(viewer, robot, speed, ctrl_mode, seed):
+    seed_label = f"seed: {seed}" if seed is not None else "seed: random"
     print("\n" + "=" * 72)
     print(f"  Unitree {robot.upper()} — Merged Locomotion  (torque WBC + DCM)")
     print("=" * 72)
@@ -154,12 +169,14 @@ def menu(viewer, robot, speed):
     print(f"  [v] viewer: {'ON ' if viewer else 'OFF'}   "
           f"[r] robot: {robot.upper():5s}   "
           f"[s] speed: {speed} ({SPEED_LABELS[speed]})")
+    print(f"  [u] sandbox ctrl: {CTRL_LABELS[ctrl_mode]:22s}   "
+          f"[x] waiter {seed_label}")
     print("  [ESC / q]  exit")
     print("=" * 72)
     print("Press a key...")
 
 
-def run_task(key, viewer, robot, speed):
+def run_task(key, viewer, robot, speed, ctrl_mode, seed):
     title, cmd, supports_vw, supports_rb, see = TASK_BY_KEY[key]
     args = list(cmd)
     if viewer and supports_vw:
@@ -170,6 +187,15 @@ def run_task(key, viewer, robot, speed):
         print(f"\n(note: task '{title}' is G1-only; running on G1.)")
     if key in SPEED_TASKS:
         args += ["--speed", SPEED_PRESETS[speed]]
+    # Sandbox control mode
+    if key in CTRL_TASKS:
+        if ctrl_mode == "mpc":
+            args.append("--mpc")
+        elif ctrl_mode == "step-timing":
+            args.append("--step-timing")
+    # Waiter seed
+    if key in SEED_TASKS and seed is not None:
+        args += ["--seed", str(seed)]
     print("\n" + "-" * 72)
     print(f"RUN [{robot.upper()}]: {title}")
     print(f"WHAT YOU SHOULD SEE: {see}")
@@ -184,11 +210,13 @@ def run_task(key, viewer, robot, speed):
 
 
 def main():
-    viewer = False
-    robot = "g1"
-    speed = "normal"
+    viewer    = False
+    robot     = "g1"
+    speed     = "normal"
+    ctrl_mode = "dcm"
+    seed      = None   # random by default
     while True:
-        menu(viewer, robot, speed)
+        menu(viewer, robot, speed, ctrl_mode, seed)
         ch = getkey()
         if ch in ("\x1b", "q", "Q"):
             print("bye.")
@@ -202,8 +230,14 @@ def main():
         if ch in ("s", "S"):
             speed = SPEED_ORDER[(SPEED_ORDER.index(speed) + 1) % len(SPEED_ORDER)]
             continue
+        if ch in ("u", "U"):
+            ctrl_mode = CTRL_MODES[(CTRL_MODES.index(ctrl_mode) + 1) % len(CTRL_MODES)]
+            continue
+        if ch in ("x", "X"):
+            seed = SEED_LIST[(SEED_LIST.index(seed) + 1) % len(SEED_LIST)]
+            continue
         if ch in TASK_BY_KEY:
-            run_task(ch, viewer, robot, speed)
+            run_task(ch, viewer, robot, speed, ctrl_mode, seed)
         # any other key: just redraw the menu
 
 
