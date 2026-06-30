@@ -101,28 +101,31 @@ class WalkPlan:
         # Update swing_from for the NEXT future SS where landed_side swings.
         # Only update the immediately-next phase; further-future phases are corrected
         # at their own touchdown events, avoiding cascading errors.
+        # Guard: if the deviation from the planned swing_from is large (>5 cm) the
+        # robot is in a large-correction regime (fast walk / push recovery).  Replanning
+        # those deviations would cascade the correction into future steps and destabilise.
+        # Gate: only replan if step deviation is very small (<1.5 cm).
+        # Fast walk (capture corrections of 2-6 cm) and any large-disturbance regime
+        # must NOT replan — updating swing_from with large offsets shifts the swing arc
+        # and cascades into late-step falls.  For normal/slow walk (tiny corrections)
+        # this updates the departure point so the swing arc matches reality exactly.
+        _MAX_REPLAN_DEV = 0.015   # 1.5 cm — only replanning for near-perfect landings
         for ph in self.timeline:
             if ph["t1"] <= t:
                 continue  # past phase, skip
             if ph["type"] == "SS" and ph["swing"] == landed_side:
+                planned_from = np.asarray(ph["swing_from"], float)
+                if np.linalg.norm(actual[:2] - planned_from[:2]) > _MAX_REPLAN_DEV:
+                    return  # deviation too large — skip replanning, let DCM handle it
                 ph["swing_from"] = actual.tolist()
                 # swing_to is deliberately left unchanged: the planned landing
                 # target was chosen for balance and we should still aim for it.
                 break
 
-        # Regenerate DCM/CoM from the current CoM position onward.
-        # The backward DCM pass depends only on ZMP (unchanged), so the DCM is the
-        # same as before; the forward CoM pass is restarted from the actual CoM at t
-        # to keep numerical consistency.  We splice: entries before idx_now are kept
-        # intact to avoid a discontinuous reference jump in the controller.
-        idx_now = self._idx(t)
-        com_now = self.traj["com"][idx_now].copy()
-        new_traj = self.dcm.generate(self.timeline, com_now)
-        self.traj["dcm"] = new_traj["dcm"]   # backward pass: full array correct
-        self.traj["zmp"] = new_traj["zmp"]   # same ZMP grid (unchanged timeline)
-        n_future = len(self.traj["com"]) - idx_now
-        self.traj["com"][idx_now:]     = new_traj["com"][:n_future]
-        self.traj["com_vel"][idx_now:] = new_traj["com_vel"][:n_future]
+        # swing_from update only changes the swing arc geometry, NOT the ZMP/DCM
+        # trajectory (ZMP depends only on swing_to, which is kept unchanged).
+        # Regenerating DCM here would introduce numerical noise mid-walk and
+        # destabilise fast gaits — the existing DCM trajectory remains valid.
 
     def support_box(self, t, foot_half, margin=0.0):
         """Axis-aligned CoP feasibility box at time t: returns (lo[2], hi[2]).

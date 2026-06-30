@@ -42,8 +42,16 @@ class DCMPlanner:
             zmp[k] = ph["zmp_from"] + s * (ph["zmp_to"] - ph["zmp_from"])
         return t, zmp
 
-    def generate(self, timeline, com0_xy):
-        """Return dict of sampled trajectories (t, zmp, dcm, com, com_vel)."""
+    def generate(self, timeline, com0_xy, idx_start=0):
+        """Return dict of sampled trajectories (t, zmp, dcm, com, com_vel).
+
+        idx_start: if >0, the backward DCM pass uses the full timeline but the
+        forward CoM integration starts at index idx_start with com0_xy as initial
+        condition.  This is used by replan_touchdown to restart the CoM forward
+        pass from the actual measured CoM at the current time while using the
+        already-computed DCM (which is always correct since the backward pass is
+        stable and depends only on the ZMP schedule, not on the initial CoM).
+        """
         t, zmp = self._sample_zmp(timeline)
         N = len(t)
         w, dt = self.omega, self.dt
@@ -63,13 +71,18 @@ class DCMPlanner:
             dcm[k] = eff_zmp_k + (dcm[k + 1] - eff_zmp_k) * decay
 
         # Forward CoM integration: p_dot = omega (xi - p).
+        # If idx_start > 0 only integrate from idx_start onward (used during
+        # online replanning so the past CoM trajectory is not disturbed).
         com = np.zeros((N, 2))
         com_vel = np.zeros((N, 2))
-        com[0] = com0_xy
-        for k in range(N - 1):
+        com[idx_start] = com0_xy
+        for k in range(idx_start, N - 1):
             com_vel[k] = w * (dcm[k] - com[k])
             com[k + 1] = com[k] + dt * com_vel[k]
         com_vel[-1] = w * (dcm[-1] - com[-1])
+        # Fill in past entries with the same initial value (never read after replan)
+        if idx_start > 0:
+            com[:idx_start] = com0_xy
 
         return {"t": t, "zmp": zmp, "dcm": dcm, "com": com, "com_vel": com_vel,
                 "omega": w, "z": self.z}

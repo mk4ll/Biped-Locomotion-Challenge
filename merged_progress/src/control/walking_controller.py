@@ -112,6 +112,17 @@ class WalkingController:
             if idx is not None:
                 self._sho_idx[side] = idx
 
+        # Override elbow nominal to elbow_angle (default 1.57 rad = 90°) when arm swing is on.
+        # The keyframe default is 1.28 rad (~73°); 1.57 gives a proper right-angle bend.
+        if as_cfg.get("enabled", False):
+            elbow_angle = as_cfg.get("elbow_angle", 1.57)
+            for side, jname in [("left",  as_cfg.get("left_elbow",  "left_elbow_joint")),
+                                 ("right", as_cfg.get("right_elbow", "right_elbow_joint"))]:
+                idx = self._find_act_idx(env.model, jname)
+                if idx is not None:
+                    self._q_nom_base[idx] = elbow_angle
+                    self.pos_task.q_nom[idx] = elbow_angle
+
         # --- Step timing QP (Khadiv et al. 2016) ---
         # The StepTimingQP class (src/planning/step_timing.py) is available and tested.
         # Full per-step timing optimisation requires an event-driven online replanner

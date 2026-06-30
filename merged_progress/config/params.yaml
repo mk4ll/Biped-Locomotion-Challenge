@@ -157,6 +157,9 @@ arm_swing:
   gain: 0.08                  # amplitude [rad] at mid-swing (tune to taste)
   left_shoulder: "left_shoulder_pitch_joint"
   right_shoulder: "right_shoulder_pitch_joint"
+  left_elbow: "left_elbow_joint"
+  right_elbow: "right_elbow_joint"
+  elbow_angle: 1.57           # elbow angle [rad] during arm swing (1.57 = 90 deg)
 
 # ---------------------------------------------------------------------
 # Step timing QP (Khadiv et al. 2016)

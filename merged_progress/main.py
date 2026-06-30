@@ -90,6 +90,13 @@ TASKS = [
      ["scripts/run_turn.py"], True, True,
      "Pure yaw rotation: vx=vy=0, vyaw=0.2 rad/s, 12 steps → ~92° turn. "
      "After 90° the foot support polygon rotates 90°; this is the certified stable limit."),
+    ("l", "FUN: Waiter — DIFFICULT course (chicane / hairpin / bypass)",
+     ["scripts/run_navigate_hard.py"], True, True,
+     "Three hard courses — none a sine wave: "
+     "CHICANE (Z-shape: path holds +y then crosses to −y, 4 tables in 2 same-side pairs), "
+     "HAIRPIN (long +y bump, 1.3 m flat dwell, 3 right-side tables), "
+     "BYPASS (mirror of HAIRPIN: long −y bump, 3 left-side tables). "
+     "All use half-cosine transitions, curviness ≈ 0.13–0.19 rad/0.11 m. RESULT: PASS."),
 ]
 TASK_BY_KEY = {t[0]: t[1:] for t in TASKS}
 # Speed preset names — mapped to --speed argument of run_walk.py
